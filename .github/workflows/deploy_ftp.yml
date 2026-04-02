@@ -79,7 +79,12 @@ jobs:
             echo "[6/7] Verify user exists (fail deploy if not)"
             sleep 1
             docker exec "$NAME" sh -lc "pure-pw show \"${FTP_USER}\" >/dev/null"
+
             
+            echo "[6.5] Ensure home directory ownership and permissions"
+            docker exec "$NAME" sh -lc "chown -R ${FTP_UID}:${FTP_GID} /home/ftpusers"
+            docker exec "$NAME" sh -lc "chmod 755 /home/ftpusers"
+
             echo "[7/7] Cleanup sensitive env"
             unset FTP_PASS
             unset FTP_USER
