@@ -77,8 +77,9 @@ jobs:
             fi
 
             echo "[6/7] Verify user exists (fail deploy if not)"
-            docker exec "$NAME" sh -lc "pure-pw list | grep -Fx \"${FTP_USER}\" >/dev/null"
-
+            sleep 1
+            docker exec "$NAME" sh -lc "pure-pw show \"${FTP_USER}\" >/dev/null"
+            
             echo "[7/7] Cleanup sensitive env"
             unset FTP_PASS
             unset FTP_USER
