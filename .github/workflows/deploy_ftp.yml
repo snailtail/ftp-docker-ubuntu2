@@ -38,4 +38,3 @@ jobs:
               -e PUBLICHOST=${{ secrets.FTP_SERVER_IP }} \
               -v ftpdata:/home/ftpusers \
               stilliard/pure-ftpd
-``
