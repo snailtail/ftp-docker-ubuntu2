@@ -1,4 +1,4 @@
-name: Deploy FTP (pure-ftpd, ARM)
+name: Deploy FTP (pure-ftpd, ARM-safe)
 
 on:
   push:
@@ -18,16 +18,11 @@ jobs:
           script: |
             set -e
 
-            # Säkerställ att volume finns (idempotent)
             docker volume create ftpdata >/dev/null 2>&1 || true
-
-            # Stoppa och ta bort ev. befintlig container
             docker rm -f ftp >/dev/null 2>&1 || true
 
-            # Hämta ARM-kompatibel image
-            docker pull stilliard/pure-ftpd
+            docker pull crazymax/pure-ftpd:latest
 
-            # Starta FTP-server
             docker run -d \
               --name ftp \
               -p 2121:21 \
@@ -37,4 +32,4 @@ jobs:
               -e FTP_USER_HOME=/home/ftpusers \
               -e PUBLICHOST=${{ secrets.FTP_SERVER_IP }} \
               -v ftpdata:/home/ftpusers \
-              stilliard/pure-ftpd
+              crazymax/pure-ftpd:latest
