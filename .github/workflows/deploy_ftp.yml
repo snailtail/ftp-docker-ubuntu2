@@ -25,7 +25,7 @@ jobs:
 
             docker run -d \
               --name ftp \
-              -p 2121:21 \
+              -p 2121:2100 \
               -p 30000-30010:30000-30010 \
               -e FTP_USER_NAME=${{ secrets.FTP_USER }} \
               -e FTP_USER_PASS=${{ secrets.FTP_PASS }} \
