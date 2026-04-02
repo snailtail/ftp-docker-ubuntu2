@@ -1,4 +1,4 @@
-name: Deploy FTP server
+name: Deploy FTP (pure-ftpd, ARM)
 
 on:
   push:
@@ -9,25 +9,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: SSH deploy
+      - name: Deploy FTP container over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            docker rm -f ftp || true
-            docker pull fauria/vsftpd
+            set -e
 
+            # Säkerställ att volume finns (idempotent)
+            docker volume create ftpdata >/dev/null 2>&1 || true
+
+            # Stoppa och ta bort ev. befintlig container
+            docker rm -f ftp >/dev/null 2>&1 || true
+
+            # Hämta ARM-kompatibel image
+            docker pull stilliard/pure-ftpd
+
+            # Starta FTP-server
             docker run -d \
               --name ftp \
               -p 2121:21 \
               -p 30000-30010:30000-30010 \
-              -e FTP_USER=${{ secrets.FTP_USER }} \
-              -e FTP_PASS=${{ secrets.FTP_PASS }} \
-              -e PASV_ENABLE=YES \
-              -e PASV_MIN_PORT=30000 \
-              -e PASV_MAX_PORT=30010 \
-              -e PASV_ADDRESS=${{ secrets.FTP_SERVER_IP }} \
-              -v /srv/ftp:/home/vsftpd \
-              fauria/vsftpd
+              -e FTP_USER_NAME=${{ secrets.FTP_USER }} \
+              -e FTP_USER_PASS=${{ secrets.FTP_PASS }} \
+              -e FTP_USER_HOME=/home/ftpusers \
+              -e PUBLICHOST=${{ secrets.FTP_SERVER_IP }} \
+              -v ftpdata:/home/ftpusers \
+              stilliard/pure-ftpd
+``
