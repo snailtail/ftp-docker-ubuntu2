@@ -1,4 +1,4 @@
-name: Deploy FTP (pure-ftpd, robust)
+name: Deploy FTP (pure-ftpd, CI-robust)
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy over SSH
+      - name: Deploy FTP server over SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           FTP_USER: ${{ secrets.FTP_USER }}
@@ -25,9 +25,14 @@ jobs:
 
             IMAGE="crazymax/pure-ftpd:latest"
             NAME="ftp"
-            CTRL_HOST_PORT="2121"
-            CTRL_CONTAINER_PORT="2100"   # image binds here by default in logs [5](https://deepwiki.com/fauria/docker-vsftpd/2.1-basic-setup-with-docker-run)
-            PASV_RANGE="30000:30009"
+
+            HOST_CTRL_PORT=2121
+            CONTAINER_CTRL_PORT=2100
+            PASV_MIN=30000
+            PASV_MAX=30009
+
+            FTP_UID=1000
+            FTP_GID=1000
 
             echo "[1/7] Create volumes (idempotent)"
             docker volume create ftpdata >/dev/null 2>&1 || true
@@ -41,17 +46,16 @@ jobs:
 
             docker run -d \
               --name "$NAME" \
-              -p "${CTRL_HOST_PORT}:${CTRL_CONTAINER_PORT}" \
-              -p "30000-30009:30000-30009" \
+              -p "${HOST_CTRL_PORT}:${CONTAINER_CTRL_PORT}" \
+              -p "${PASV_MIN}-${PASV_MAX}:${PASV_MIN}-${PASV_MAX}" \
               -e "AUTH_METHOD=puredb" \
               -e "PASSIVE_IP=${FTP_SERVER_IP}" \
-              -e "PASSIVE_PORT_RANGE=${PASV_RANGE}" \
+              -e "PASSIVE_PORT_RANGE=${PASV_MIN}:${PASV_MAX}" \
               -v ftpdata:/home/ftpusers \
               -v ftpdb:/data \
               "$IMAGE"
 
-            echo "[4/7] Wait for container init to finish (short, deterministic)"
-            # s6 overlay init är snabb; vi väntar bara tills pure-ftpd-processen syns
+            echo "[4/7] Wait for Pure-FTPd to be running"
             for i in $(seq 1 30); do
               if docker exec "$NAME" sh -lc "pgrep -f pure-ftpd >/dev/null 2>&1"; then
                 break
@@ -59,22 +63,26 @@ jobs:
               sleep 1
             done
 
-            echo "[5/7] Ensure ftpuser UID (fallback to 1000 if missing)"
-            FTP_UID="$(docker exec "$NAME" sh -lc 'id -u ftpuser 2>/dev/null || echo 1000')"
-
-            echo "[6/7] Create-or-update FTP user in PureDB"
+            echo "[5/7] Create or update FTP user (PureDB)"
             if docker exec "$NAME" sh -lc "pure-pw show \"${FTP_USER}\" >/dev/null 2>&1"; then
               echo "User exists -> updating password"
               printf '%s\n%s\n' "${FTP_PASS}" "${FTP_PASS}" | \
-                docker exec -i "$NAME" sh -lc "pure-pw passwd \"${FTP_USER}\" -m"
+                docker exec -i "$NAME" sh -lc \
+                "pure-pw passwd \"${FTP_USER}\" -m"
             else
               echo "User missing -> creating user"
               printf '%s\n%s\n' "${FTP_PASS}" "${FTP_PASS}" | \
-                docker exec -i "$NAME" sh -lc "pure-pw useradd \"${FTP_USER}\" -u ${FTP_UID} -d /home/ftpusers -m"
+                docker exec -i "$NAME" sh -lc \
+                "pure-pw useradd \"${FTP_USER}\" -u ${FTP_UID} -g ${FTP_GID} -d /home/ftpusers -m"
             fi
 
-            echo "[7/7] Verify user present (fail deploy if not)"
+            echo "[6/7] Verify user exists (fail deploy if not)"
             docker exec "$NAME" sh -lc "pure-pw list | grep -Fx \"${FTP_USER}\" >/dev/null"
 
-            echo "✅ FTP deploy OK. Control port: ${CTRL_HOST_PORT}, passive: 30000-30009"
-            echo "Tip: check logs with: docker logs ${NAME} | tail -n 50"
+            echo "[7/7] Cleanup sensitive env"
+            unset FTP_PASS
+            unset FTP_USER
+
+            echo "✅ FTP deploy successful"
+            echo "Control port: ${HOST_CTRL_PORT}"
+            echo "Passive ports: ${PASV_MIN}-${PASV_MAX}"
